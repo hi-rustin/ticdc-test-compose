@@ -1,0 +1,43 @@
+version: '2'
+
+networks:
+  ticdc-test:
+    driver: bridge
+
+services:
+  zookeeper:
+    image: wurstmeister/zookeeper
+    networks:
+      - ticdc-test
+    ports:
+     - "2181:2181"
+
+  kafka:
+    image: wurstmeister/kafka
+    networks:
+      - ticdc-test
+    ports:
+     - "9092:9092"
+    environment:
+      DOCKER_API_VERSION: 1.22
+      KAFKA_ADVERTISED_HOST_NAME: 172.23.29.101
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      #KAFKA_DEFAULT_REPLICATION_FACTOR: 3
+      #KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 3
+      KAFKA_CREATE_TOPICS: "ticdc-test:1:1"
+      KAFKA_MESSAGE_MAX_BYTES: 3145728
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    depends_on:
+      - zookeeper
+
+  kafka-consumer:
+    image: wurstmeister/kafka
+    networks:
+      - ticdc-test
+    environment:
+      KAFKA_CFG_ZOOKEEPER_CONNECT: zookeeper:2181
+    command: kafka-console-consumer.sh --bootstrap-server kafka:9092 --topic ticdc-test --from-beginning --property print.partition=true
+    depends_on:
+      - kafka
+      - zookeeper
