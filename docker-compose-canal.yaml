@@ -32,7 +32,7 @@ services:
       - kafka
     command: kafka-console-consumer.sh --bootstrap-server kafka:9092 --topic example --from-beginning --property print.partition=true
 
-  mysql:
+  mysql-upstream:
     image: mysql:5.7
     platform: linux/amd64
     networks:
@@ -44,12 +44,24 @@ services:
       MYSQL_ROOT_PASSWORD: ''
     command: --log-bin=mysql-bin --port=3306 --bind-address=0.0.0.0 --binlog-format=ROW --server-id=1 --gtid_mode=ON --enforce-gtid-consistency=true
 
+  mysql-downstream:
+    image: mysql:5.7
+    platform: linux/amd64
+    networks:
+      - canal-test
+    ports:
+      - "4000:3306"
+    environment:
+      MYSQL_ALLOW_EMPTY_PASSWORD: 'true'
+      MYSQL_ROOT_PASSWORD: ''
+    command: --log-bin=mysql-bin --port=3306 --bind-address=0.0.0.0 --binlog-format=ROW --server-id=1 --gtid_mode=ON --enforce-gtid-consistency=true
+
   canal:
     image: canal/canal-server
     networks:
       - canal-test
     environment:
-      canal.instance.master.address: mysql:3306
+      canal.instance.master.address: mysql-upstream:3306
       canal.instance.dbUsername: root
       canal.instance.dbPassword: ''
       canal.mq.topic: example
@@ -58,5 +70,24 @@ services:
       canal.mq.flatMessage: true
     depends_on:
       - kafka
-      - mysql
+      - mysql-upstream
       - kafka-consumer
+
+  canal-adapter:
+    # Build from https://github.com/pingcap/tiflow/tree/master/scripts/canal/docker.
+    # FIXME: Find a way to make a test image, which is currently in the local magic change.
+    image: rustinliu/ticdc-canal-json-adapter:latest
+    networks:
+      - canal-test
+    environment:
+      KAFKA_SERVER: kafka:9092
+      ZOOKEEPER_SERVER: zookeeper:2181
+      # This is actually the name of the topic.
+      DB_NAME: example
+      DOWNSTREAM_DB_HOST: mysql-downstream
+      DOWNSTREAM_DB_PORT: 3306
+      USE_FLAT_MESSAGE: true
+    depends_on:
+      - zookeeper
+      - kafka
+      - mysql-downstream
