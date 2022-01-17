@@ -34,7 +34,6 @@ services:
 
   mysql-upstream:
     image: mysql:5.7
-    platform: linux/amd64
     networks:
       - canal-test
     ports:
@@ -46,7 +45,6 @@ services:
 
   mysql-downstream:
     image: mysql:5.7
-    platform: linux/amd64
     networks:
       - canal-test
     ports:

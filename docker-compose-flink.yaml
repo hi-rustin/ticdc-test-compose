@@ -1,0 +1,70 @@
+version: "3"
+
+networks:
+  flink-test:
+    driver: bridge
+
+services:
+  zookeeper:
+    image: wurstmeister/zookeeper
+    networks:
+      - flink-test
+
+  kafka:
+    image: wurstmeister/kafka
+    ports:
+      - "9092:9092"
+    networks:
+      - flink-test
+    environment:
+      DOCKER_API_VERSION: 1.22
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_HOST_NAME: 172.23.29.101
+      KAFKA_CREATE_TOPICS: "ticdc-test:1:1"
+      KAFKA_MESSAGE_MAX_BYTES: 3145728
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    depends_on:
+      - zookeeper
+
+  kafka-consumer:
+    image: wurstmeister/kafka
+    networks:
+      - flink-test
+    environment:
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+    depends_on:
+      - kafka
+    command: kafka-console-consumer.sh --bootstrap-server kafka:9092 --topic ticdc-test --from-beginning --property print.partition=true
+
+  jobmanager:
+    build:
+      context: ./
+      dockerfile: ./flink.Dockerfile
+    networks:
+      - flink-test
+    ports:
+      - "8081:8081"
+    command: jobmanager
+    environment:
+      - |
+        FLINK_PROPERTIES=
+        jobmanager.rpc.address: jobmanager
+    depends_on:
+      - kafka
+
+  taskmanager:
+    build:
+      context: ./
+      dockerfile: ./flink.Dockerfile
+    networks:
+      - flink-test
+    command: taskmanager
+    scale: 1
+    environment:
+      - |
+        FLINK_PROPERTIES=
+        jobmanager.rpc.address: jobmanager
+        taskmanager.numberOfTaskSlots: 2
+    depends_on:
+      - jobmanager
